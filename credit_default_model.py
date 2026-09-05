@@ -18,6 +18,7 @@ from sklearn.metrics import (
     roc_auc_score,
 )
 from sklearn.model_selection import train_test_split
+from sklearn.neural_network import MLPClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
@@ -27,6 +28,19 @@ ID_COLUMN = "client_id"
 CATEGORICAL_COLUMNS = ["SEX", "EDUCATION", "MARRIAGE"] + [
     f"PAY_{period}" for period in [0, 2, 3, 4, 5, 6]
 ]
+# Best Latin-hypercube settings from credit_default_analysis.ipynb
+NEURAL_NET_PARAMS = {
+    "hidden_layer_sizes": (11, 11),
+    "alpha": 0.005173693460665387,
+    "learning_rate_init": 0.003764072612068487,
+    "activation": "relu",
+    "solver": "adam",
+    "max_iter": 300,
+    "early_stopping": True,
+    "validation_fraction": 0.1,
+    "n_iter_no_change": 10,
+    "random_state": 42,
+}
 
 
 def add_customer_metrics(data: pd.DataFrame) -> pd.DataFrame:
@@ -57,14 +71,17 @@ def make_pipeline(model: object, feature_columns: list[str]) -> Pipeline:
     transformer = ColumnTransformer(
         transformers=[
             ("numeric", StandardScaler(), numeric),
-            ("categorical", OneHotEncoder(handle_unknown="ignore"), categorical),
+            ("categorical", OneHotEncoder(handle_unknown="ignore", sparse_output=False), categorical),
         ]
     )
     return Pipeline([("preprocess", transformer), ("model", model)])
 
 
 def evaluate_model(name: str, model: Pipeline, x_valid: pd.DataFrame, y_valid: pd.Series) -> None:
-    probabilities = np.clip(model.predict(x_valid), 0, 1)
+    if hasattr(model, "predict_proba"):
+        probabilities = model.predict_proba(x_valid)[:, 1]
+    else:
+        probabilities = np.clip(model.predict(x_valid), 0, 1)
     predictions = (probabilities >= 0.5).astype(int)
     print(f"\n{name}")
     print(f"  ROC-AUC:             {roc_auc_score(y_valid, probabilities):.4f}")
@@ -109,13 +126,14 @@ def main() -> None:
     )
 
     linear_model = make_pipeline(LinearRegression(), feature_columns)
-    logistic_model = make_pipeline(
-        LogisticRegression(max_iter=2000), feature_columns
-    )
+    logistic_model = make_pipeline(LogisticRegression(max_iter=2000), feature_columns)
+    neural_net_model = make_pipeline(MLPClassifier(**NEURAL_NET_PARAMS), feature_columns)
     linear_model.fit(x_train, y_train)
     logistic_model.fit(x_train, y_train)
+    neural_net_model.fit(x_train, y_train)
     evaluate_model("Linear probability regression", linear_model, x_valid, y_valid)
     evaluate_model("Logistic regression comparison", logistic_model, x_valid, y_valid)
+    evaluate_model("Neural network (LHS-tuned)", neural_net_model, x_valid, y_valid)
 
     linear_model.fit(x, y)
     probabilities = np.clip(linear_model.predict(test[feature_columns]), 0, 1)

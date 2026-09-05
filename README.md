@@ -6,6 +6,8 @@ The target is binary (`default`). The script compares logistic regression with a
 
 ## Run
 
+For an interactive analysis, open [credit_default_analysis.ipynb](credit_default_analysis.ipynb) in VS Code and run the cells from top to bottom.
+
 ```bash
 python3 -m pip install -r requirements.txt
 python3 credit_default_model.py \
